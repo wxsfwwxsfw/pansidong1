@@ -1,7 +1,6 @@
 import json
 import math
 import os
-import sys
 import traceback
 import webbrowser
 from dataclasses import dataclass
@@ -42,19 +41,32 @@ QQ_GROUP_URL = "https://qm.qq.com/"
 MENU_TEXT_X_RATIO = 0.846
 MENU_TEXT_Y_RATIOS = (0.5785, 0.6835, 0.7885, 0.8935)
 MENU_TEXT_BASELINE_OFFSET = 4
+PAUSE_MENU_ITEMS = ("返回游戏", "保存游戏", "读取游戏", "回主菜单", "设置", "退出")
+RESOLUTION_OPTIONS = (
+    (1280, 720),
+    (1600, 900),
+    (1920, 1080),
+)
+PAUSE_HINT_SECONDS = 1.6
 
 GID_MASK = 0x1FFFFFFF
 BLOCKED_PROP_NAMES = {"blocked", "block", "solid", "collide", "collision"}
 COLLISION_LAYER_NAMES = {"collision", "collider", "blocked", "obstacle", "碰撞", "阻挡"}
 AUTO_BLOCK_TILESET_KEYWORDS = (
-    "gutou",   # skull
-    "shitou",  # stone
-    "dongbi",  # cave wall
+    "gutou",       # skull
+    "shitou",      # stone
+    "dongbi",      # cave wall
+    "zhongrushi",  # stalactite
+    "zhizhuluan",  # spider egg cluster
+    "石碑",
+    "shibei",
     "wall",
     "rock",
     "skull",
 )
 TORCH_TILESET_KEYWORDS = ("huoba", "torch")
+RIGHT_TRIM_BLOCK_TILESET_KEYWORDS = ("zhongrushi", "zhizhuluan")
+RIGHT_TRIM_BLOCK_KEEP_RATIO = 0.72
 
 
 def load_image(path: Path) -> pygame.Surface:
@@ -150,6 +162,12 @@ class TileLayer:
     visible: bool
 
 
+@dataclass
+class DisplaySettings:
+    resolution: tuple[int, int]
+    fullscreen: bool
+
+
 class TiledMap:
     def __init__(self, map_path: Path):
         self.map_path = map_path
@@ -182,6 +200,7 @@ class TiledMap:
         self.tiles: dict[int, pygame.Surface] = {}
         self.scaled_tiles_cache: dict[float, dict[int, pygame.Surface]] = {}
         self.blocked_gids: set[int] = set()
+        self.right_trim_block_gids: set[int] = set()
         self.blocked_sprite_rects: list[pygame.Rect] = []
         self.coord_text_cache: dict[str, pygame.Surface] = {}
         self.torch_gids: set[int] = set()
@@ -222,6 +241,7 @@ class TiledMap:
                     self.tiles[first_gid + local_id] = sheet.subsurface(rect).copy()
                 self._collect_blocked_from_tsx(root, first_gid)
                 self._collect_blocked_by_tileset_name(first_gid, tile_count, ts_name)
+                self._collect_right_trim_collision_by_tileset_name(first_gid, tile_count, ts_name)
                 self._collect_torch_by_tileset_name(first_gid, tile_count, ts_name)
                 continue
 
@@ -249,6 +269,7 @@ class TiledMap:
                 self.tiles[first_gid + local_id] = sheet.subsurface(rect).copy()
             self._collect_blocked_from_json_tileset(ts, first_gid)
             self._collect_blocked_by_tileset_name(first_gid, tile_count, ts_name)
+            self._collect_right_trim_collision_by_tileset_name(first_gid, tile_count, ts_name)
             self._collect_torch_by_tileset_name(first_gid, tile_count, ts_name)
 
     def _collect_blocked_by_tileset_name(
@@ -276,6 +297,19 @@ class TiledMap:
         if any(keyword in name for keyword in TORCH_TILESET_KEYWORDS):
             for local_id in range(tile_count):
                 self.torch_gids.add(first_gid + local_id)
+
+    def _collect_right_trim_collision_by_tileset_name(
+        self,
+        first_gid: int,
+        tile_count: int,
+        tileset_name: str,
+    ) -> None:
+        name = tileset_name.strip().lower()
+        if not name:
+            return
+        if any(keyword in name for keyword in RIGHT_TRIM_BLOCK_TILESET_KEYWORDS):
+            for local_id in range(tile_count):
+                self.right_trim_block_gids.add(first_gid + local_id)
 
     def _collect_blocked_from_json_tileset(self, ts: dict, first_gid: int) -> None:
         for tile_info in ts.get("tiles", []):
@@ -356,6 +390,9 @@ class TiledMap:
                     tile = self.tiles.get(gid)
                     tile_w = tile.get_width() if tile is not None else self.tile_width
                     tile_h = tile.get_height() if tile is not None else self.tile_height
+                    if gid in self.right_trim_block_gids and tile_w > self.tile_width:
+                        # Keep left-side body collision, trim right overflow for easier pathing.
+                        tile_w = max(self.tile_width, round(tile_w * RIGHT_TRIM_BLOCK_KEEP_RATIO))
                     x = col * self.tile_width
                     y = (row + 1) * self.tile_height - tile_h
                     rects.append(pygame.Rect(x, y, tile_w, tile_h))
@@ -668,20 +705,25 @@ def draw_player_step_coordinate(
     surface.blit(label, label_rect)
 
 
-def find_spawn_position_bottom_right(
+def find_spawn_position_top(
     tiled_map: TiledMap,
     half_w: int,
     half_h: int,
     foot_offset: int,
 ) -> tuple[float, float]:
-    for row in range(tiled_map.map_height - 1, -1, -1):
-        for col in range(tiled_map.map_width - 1, -1, -1):
+    center_col = tiled_map.map_width // 2
+    col_order = sorted(
+        range(tiled_map.map_width),
+        key=lambda col: (abs(col - center_col), col),
+    )
+    for row in range(0, tiled_map.map_height):
+        for col in col_order:
             x = col * tiled_map.tile_width + tiled_map.tile_width * 0.5
             y = row * tiled_map.tile_height + tiled_map.tile_height * 0.5
             if tiled_map.can_move_to(x, y + foot_offset, half_w, half_h):
                 return x, y
-    fallback_x = tiled_map.pixel_width - max(half_w + 1, tiled_map.tile_width * 0.5)
-    fallback_y = tiled_map.pixel_height - max(half_h + 1, tiled_map.tile_height * 0.5)
+    fallback_x = tiled_map.tile_width * (center_col + 0.5)
+    fallback_y = max(half_h + 1, tiled_map.tile_height * 0.5)
     return fallback_x, fallback_y
 
 
@@ -742,6 +784,190 @@ def draw_menu_button(
     surface.blit(text_shadow, shadow_rect)
     surface.blit(text_surface, text_rect)
     return rect
+
+
+def apply_display_settings(settings: DisplaySettings) -> pygame.Surface:
+    flags = pygame.FULLSCREEN if settings.fullscreen else 0
+    return pygame.display.set_mode(settings.resolution, flags=flags)
+
+
+def draw_pause_panel(
+    screen: pygame.Surface,
+    title: str,
+    items: list[str],
+    hovered_idx: int,
+    footer: str | None = None,
+) -> list[pygame.Rect]:
+    view_w, view_h = screen.get_size()
+    dim = pygame.Surface((view_w, view_h), pygame.SRCALPHA)
+    dim.fill((0, 0, 0, 168))
+    screen.blit(dim, (0, 0))
+
+    panel_w = min(760, max(520, view_w - 120))
+    panel_h = min(960, max(520, view_h - 120))
+    panel = pygame.Rect(0, 0, panel_w, panel_h)
+    panel.center = (view_w // 2, view_h // 2)
+    pygame.draw.rect(screen, (8, 12, 14, 238), panel, border_radius=18)
+    pygame.draw.rect(screen, (180, 188, 196), panel, width=2, border_radius=18)
+
+    title_font = load_menu_font(58)
+    item_font = load_menu_font(50)
+    title_surface = title_font.render(title, True, (230, 236, 240))
+    title_rect = title_surface.get_rect(center=(panel.centerx, panel.top + 84))
+    screen.blit(title_surface, title_rect)
+
+    start_y = title_rect.bottom + 56
+    spacing = 96
+    item_rects: list[pygame.Rect] = []
+    for idx, text in enumerate(items):
+        label = item_font.render(text, True, (232, 238, 242) if idx == hovered_idx else (208, 214, 220))
+        label_rect = label.get_rect(center=(panel.centerx, start_y + idx * spacing))
+        if idx == hovered_idx:
+            hover_rect = label_rect.inflate(56, 26)
+            pygame.draw.rect(screen, (52, 60, 68, 140), hover_rect, border_radius=12)
+        screen.blit(label, label_rect)
+        click_rect = label_rect.inflate(78, 34)
+        item_rects.append(click_rect)
+
+    if footer:
+        hint_font = load_menu_font(30)
+        footer_surface = hint_font.render(footer, True, (220, 226, 232))
+        footer_rect = footer_surface.get_rect(center=(panel.centerx, panel.bottom - 46))
+        screen.blit(footer_surface, footer_rect)
+
+    return item_rects
+
+
+def run_settings_menu(
+    screen: pygame.Surface,
+    clock: pygame.time.Clock,
+    display_settings: DisplaySettings,
+) -> tuple[bool, pygame.Surface, DisplaySettings]:
+    hint_text = ""
+    hint_until = 0.0
+    while True:
+        clock.tick(FPS)
+        now = pygame.time.get_ticks() / 1000.0
+        mouse_pos = pygame.mouse.get_pos()
+        option_lines = [
+            *(f"{w} x {h}" for w, h in RESOLUTION_OPTIONS),
+            f"全屏: {'开' if display_settings.fullscreen else '关'}",
+            "返回",
+        ]
+        hovered_idx = -1
+        item_rects = draw_pause_panel(
+            screen,
+            "设置",
+            option_lines,
+            hovered_idx=-1,
+            footer=(hint_text if now < hint_until else "点击分辨率立即生效"),
+        )
+        for i, rect in enumerate(item_rects):
+            if rect.collidepoint(mouse_pos):
+                hovered_idx = i
+                break
+
+        item_rects = draw_pause_panel(
+            screen,
+            "设置",
+            option_lines,
+            hovered_idx=hovered_idx,
+            footer=(hint_text if now < hint_until else "点击分辨率立即生效"),
+        )
+
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                return True, screen, display_settings
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                return False, screen, display_settings
+            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                for idx, rect in enumerate(item_rects):
+                    if not rect.collidepoint(event.pos):
+                        continue
+                    if idx < len(RESOLUTION_OPTIONS):
+                        display_settings.resolution = RESOLUTION_OPTIONS[idx]
+                        screen = apply_display_settings(display_settings)
+                        hint_text = f"分辨率已切换到 {display_settings.resolution[0]} x {display_settings.resolution[1]}"
+                        hint_until = now + PAUSE_HINT_SECONDS
+                        break
+                    if idx == len(RESOLUTION_OPTIONS):
+                        display_settings.fullscreen = not display_settings.fullscreen
+                        screen = apply_display_settings(display_settings)
+                        hint_text = f"全屏已{'开启' if display_settings.fullscreen else '关闭'}"
+                        hint_until = now + PAUSE_HINT_SECONDS
+                        break
+                    return False, screen, display_settings
+
+        pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_HAND if hovered_idx >= 0 else pygame.SYSTEM_CURSOR_ARROW)
+        pygame.display.flip()
+
+
+def run_pause_menu(
+    screen: pygame.Surface,
+    clock: pygame.time.Clock,
+    display_settings: DisplaySettings,
+) -> tuple[str, pygame.Surface, DisplaySettings]:
+    hint_text = ""
+    hint_until = 0.0
+    while True:
+        clock.tick(FPS)
+        now = pygame.time.get_ticks() / 1000.0
+        mouse_pos = pygame.mouse.get_pos()
+        hovered_idx = -1
+        item_rects = draw_pause_panel(
+            screen,
+            "暂停",
+            list(PAUSE_MENU_ITEMS),
+            hovered_idx=-1,
+            footer=(hint_text if now < hint_until else "ESC 可返回游戏"),
+        )
+        for i, rect in enumerate(item_rects):
+            if rect.collidepoint(mouse_pos):
+                hovered_idx = i
+                break
+
+        item_rects = draw_pause_panel(
+            screen,
+            "暂停",
+            list(PAUSE_MENU_ITEMS),
+            hovered_idx=hovered_idx,
+            footer=(hint_text if now < hint_until else "ESC 可返回游戏"),
+        )
+
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                return "quit", screen, display_settings
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                return "resume", screen, display_settings
+            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                for i, rect in enumerate(item_rects):
+                    if not rect.collidepoint(event.pos):
+                        continue
+                    label = PAUSE_MENU_ITEMS[i]
+                    if label == "返回游戏":
+                        return "resume", screen, display_settings
+                    if label == "保存游戏":
+                        hint_text = "保存游戏功能待接入"
+                        hint_until = now + PAUSE_HINT_SECONDS
+                        break
+                    if label == "读取游戏":
+                        hint_text = "读取游戏功能待接入"
+                        hint_until = now + PAUSE_HINT_SECONDS
+                        break
+                    if label == "回主菜单":
+                        return "main_menu", screen, display_settings
+                    if label == "设置":
+                        should_quit, screen, display_settings = run_settings_menu(
+                            screen, clock, display_settings
+                        )
+                        if should_quit:
+                            return "quit", screen, display_settings
+                        break
+                    if label == "退出":
+                        return "quit", screen, display_settings
+
+        pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_HAND if hovered_idx >= 0 else pygame.SYSTEM_CURSOR_ARROW)
+        pygame.display.flip()
 
 
 def run_login_menu(
@@ -828,19 +1054,11 @@ def run_login_menu(
         pygame.display.flip()
 
 
-def main() -> None:
-    # Force centered, windowed launch (not fullscreen).
-    os.environ["SDL_VIDEO_CENTERED"] = "1"
-    pygame.init()
-    pygame.display.set_caption("Pygame Tiled Map Demo")
-    screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT), flags=0)
-    clock = pygame.time.Clock()
-
-    menu_action = run_login_menu(screen, clock)
-    if menu_action != "start":
-        pygame.quit()
-        return
-
+def run_game_session(
+    screen: pygame.Surface,
+    clock: pygame.time.Clock,
+    display_settings: DisplaySettings,
+) -> tuple[str, pygame.Surface, DisplaySettings]:
     try:
         map_file = find_first_map_file()
         tiled_map = TiledMap(map_file)
@@ -848,8 +1066,7 @@ def main() -> None:
     except (FileNotFoundError, ET.ParseError, json.JSONDecodeError) as e:
         print(e)
         print("Check Tiled map/json/tsx/image paths under assets/map")
-        pygame.quit()
-        sys.exit(1)
+        return "quit", screen, display_settings
 
     anim = build_animation(player_sheet)
     anim = scale_animation(anim, PLAYER_SCALE)
@@ -866,7 +1083,7 @@ def main() -> None:
     player_shadow = pygame.Surface((shadow_w, shadow_h), pygame.SRCALPHA)
     pygame.draw.ellipse(player_shadow, (0, 0, 0, 90), player_shadow.get_rect())
 
-    x, y = find_spawn_position_bottom_right(
+    x, y = find_spawn_position_top(
         tiled_map,
         collision_half_w,
         collision_half_h,
@@ -879,12 +1096,21 @@ def main() -> None:
     while running:
         dt = clock.tick(FPS) / 1000.0
         view_width, view_height = screen.get_size()
+        open_pause_menu = False
 
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
-                running = False
-            elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
-                running = False
+                return "quit", screen, display_settings
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                open_pause_menu = True
+
+        if open_pause_menu:
+            action, screen, display_settings = run_pause_menu(screen, clock, display_settings)
+            if action == "quit":
+                return "quit", screen, display_settings
+            if action == "main_menu":
+                return "main_menu", screen, display_settings
+            continue
 
         keys = pygame.key.get_pressed()
         move_dx = (keys[pygame.K_d] or keys[pygame.K_RIGHT]) - (
@@ -974,6 +1200,34 @@ def main() -> None:
         )
 
         pygame.display.flip()
+
+    return "main_menu", screen, display_settings
+
+
+def main() -> None:
+    os.environ["SDL_VIDEO_CENTERED"] = "1"
+    pygame.init()
+    pygame.display.set_caption("Pygame Tiled Map Demo")
+    display_settings = DisplaySettings(
+        resolution=(SCREEN_WIDTH, SCREEN_HEIGHT),
+        fullscreen=False,
+    )
+    screen = apply_display_settings(display_settings)
+    clock = pygame.time.Clock()
+
+    app_running = True
+    while app_running:
+        menu_action = run_login_menu(screen, clock)
+        if menu_action != "start":
+            break
+
+        game_action, screen, display_settings = run_game_session(
+            screen,
+            clock,
+            display_settings,
+        )
+        if game_action == "quit":
+            app_running = False
 
     pygame.quit()
 
