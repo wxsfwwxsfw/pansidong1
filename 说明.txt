@@ -1,0 +1,13 @@
+一、Ubuntu
+
+二、codex
+
+cmd:python main.py
+
+本地推送
+git add .
+git commit -m "简短的更新说明"
+git push
+
+在本地拉：
+git pull
