@@ -1,0 +1,384 @@
+
+player.png
+size: 1253,579
+format: RGBA8888
+filter: Linear,Linear
+repeat: none
+wukong-stand_00
+  rotate: true
+  xy: 2, 483
+  size: 94, 136
+  orig: 97, 139
+  offset: 1, 1
+  index: -1
+wukong-stand_01
+  rotate: true
+  xy: 140, 483
+  size: 94, 136
+  orig: 97, 139
+  offset: 1, 1
+  index: -1
+wukong-stand_02
+  rotate: true
+  xy: 278, 483
+  size: 94, 136
+  orig: 97, 139
+  offset: 1, 1
+  index: -1
+wukong-stand_03
+  rotate: true
+  xy: 416, 483
+  size: 94, 136
+  orig: 97, 139
+  offset: 1, 1
+  index: -1
+wukong-stand_04
+  rotate: true
+  xy: 554, 483
+  size: 94, 136
+  orig: 97, 139
+  offset: 1, 1
+  index: -1
+wukong-stand_05
+  rotate: true
+  xy: 278, 2
+  size: 95, 136
+  orig: 97, 139
+  offset: 1, 1
+  index: -1
+wukong-stand_06
+  rotate: true
+  xy: 416, 2
+  size: 95, 136
+  orig: 97, 139
+  offset: 1, 1
+  index: -1
+wukong-stand_07
+  rotate: true
+  xy: 692, 483
+  size: 94, 136
+  orig: 97, 139
+  offset: 2, 1
+  index: -1
+wukong-stand_08
+  rotate: true
+  xy: 830, 483
+  size: 94, 137
+  orig: 97, 139
+  offset: 2, 1
+  index: -1
+wukong-stand_09
+  rotate: true
+  xy: 969, 483
+  size: 94, 137
+  orig: 97, 139
+  offset: 2, 1
+  index: -1
+wukong-stand_10
+  rotate: true
+  xy: 1108, 483
+  size: 94, 137
+  orig: 97, 139
+  offset: 2, 1
+  index: -1
+wukong-stand_11
+  rotate: true
+  xy: 2, 387
+  size: 94, 137
+  orig: 97, 139
+  offset: 2, 1
+  index: -1
+wukong-stand_12
+  rotate: true
+  xy: 141, 387
+  size: 94, 137
+  orig: 97, 139
+  offset: 2, 1
+  index: -1
+wukong-stand_13
+  rotate: true
+  xy: 280, 387
+  size: 94, 137
+  orig: 97, 139
+  offset: 2, 1
+  index: -1
+wukong-stand_14
+  rotate: true
+  xy: 419, 387
+  size: 94, 137
+  orig: 97, 139
+  offset: 2, 1
+  index: -1
+wukong-stand_15
+  rotate: true
+  xy: 558, 387
+  size: 94, 137
+  orig: 97, 139
+  offset: 2, 1
+  index: -1
+wukong-stand_16
+  rotate: true
+  xy: 697, 387
+  size: 94, 137
+  orig: 97, 139
+  offset: 2, 1
+  index: -1
+wukong-stand_17
+  rotate: true
+  xy: 836, 387
+  size: 94, 137
+  orig: 97, 139
+  offset: 2, 1
+  index: -1
+wukong-stand_18
+  rotate: true
+  xy: 975, 387
+  size: 94, 137
+  orig: 97, 139
+  offset: 2, 1
+  index: -1
+wukong-stand_19
+  rotate: true
+  xy: 1114, 387
+  size: 94, 137
+  orig: 97, 139
+  offset: 2, 1
+  index: -1
+wukong-stand_20
+  rotate: true
+  xy: 2, 291
+  size: 94, 137
+  orig: 97, 139
+  offset: 2, 1
+  index: -1
+wukong-stand_21
+  rotate: true
+  xy: 554, 2
+  size: 95, 137
+  orig: 97, 139
+  offset: 1, 1
+  index: -1
+wukong-stand_22
+  rotate: true
+  xy: 141, 291
+  size: 94, 137
+  orig: 97, 139
+  offset: 1, 1
+  index: -1
+wukong-stand_23
+  rotate: true
+  xy: 280, 291
+  size: 94, 137
+  orig: 97, 139
+  offset: 1, 1
+  index: -1
+wukong-stand_24
+  rotate: true
+  xy: 419, 291
+  size: 94, 137
+  orig: 97, 139
+  offset: 1, 1
+  index: -1
+wukong-stand_25
+  rotate: true
+  xy: 558, 291
+  size: 94, 136
+  orig: 97, 139
+  offset: 1, 1
+  index: -1
+wukong-stand_26
+  rotate: true
+  xy: 696, 291
+  size: 94, 136
+  orig: 97, 139
+  offset: 1, 1
+  index: -1
+wukong-stand_27
+  rotate: true
+  xy: 834, 291
+  size: 94, 136
+  orig: 97, 139
+  offset: 1, 1
+  index: -1
+wukong-stand_28
+  rotate: true
+  xy: 972, 291
+  size: 94, 136
+  orig: 97, 139
+  offset: 1, 1
+  index: -1
+wukong-stand_29
+  rotate: true
+  xy: 1110, 291
+  size: 94, 136
+  orig: 97, 139
+  offset: 1, 1
+  index: -1
+wukong-stand_30
+  rotate: true
+  xy: 2, 195
+  size: 94, 136
+  orig: 97, 139
+  offset: 1, 1
+  index: -1
+wukong-stand_31
+  rotate: true
+  xy: 693, 2
+  size: 95, 136
+  orig: 97, 139
+  offset: 1, 1
+  index: -1
+wukong-stand_32
+  rotate: true
+  xy: 831, 2
+  size: 95, 136
+  orig: 97, 139
+  offset: 1, 1
+  index: -1
+wukong-stand_33
+  rotate: true
+  xy: 969, 2
+  size: 95, 136
+  orig: 97, 139
+  offset: 1, 1
+  index: -1
+wukong-stand_34
+  rotate: true
+  xy: 140, 195
+  size: 94, 136
+  orig: 97, 139
+  offset: 2, 1
+  index: -1
+wukong-stand_35
+  rotate: true
+  xy: 278, 195
+  size: 94, 137
+  orig: 97, 139
+  offset: 2, 1
+  index: -1
+wukong-stand_36
+  rotate: true
+  xy: 417, 195
+  size: 94, 137
+  orig: 97, 139
+  offset: 2, 1
+  index: -1
+wukong-stand_37
+  rotate: true
+  xy: 556, 195
+  size: 94, 137
+  orig: 97, 139
+  offset: 2, 1
+  index: -1
+wukong-stand_38
+  rotate: true
+  xy: 695, 195
+  size: 94, 137
+  orig: 97, 139
+  offset: 2, 1
+  index: -1
+wukong-stand_39
+  rotate: true
+  xy: 834, 195
+  size: 94, 137
+  orig: 97, 139
+  offset: 2, 1
+  index: -1
+wukong-stand_40
+  rotate: true
+  xy: 973, 195
+  size: 94, 137
+  orig: 97, 139
+  offset: 2, 1
+  index: -1
+wukong-stand_41
+  rotate: true
+  xy: 1112, 195
+  size: 94, 137
+  orig: 97, 139
+  offset: 2, 1
+  index: -1
+wukong-stand_42
+  rotate: true
+  xy: 2, 99
+  size: 94, 137
+  orig: 97, 139
+  offset: 2, 1
+  index: -1
+wukong-stand_43
+  rotate: true
+  xy: 141, 99
+  size: 94, 137
+  orig: 97, 139
+  offset: 2, 1
+  index: -1
+wukong-stand_44
+  rotate: true
+  xy: 280, 99
+  size: 94, 137
+  orig: 97, 139
+  offset: 2, 1
+  index: -1
+wukong-stand_45
+  rotate: true
+  xy: 419, 99
+  size: 94, 137
+  orig: 97, 139
+  offset: 2, 1
+  index: -1
+wukong-stand_46
+  rotate: true
+  xy: 558, 99
+  size: 94, 137
+  orig: 97, 139
+  offset: 2, 1
+  index: -1
+wukong-stand_47
+  rotate: true
+  xy: 697, 99
+  size: 94, 137
+  orig: 97, 139
+  offset: 2, 1
+  index: -1
+wukong-stand_48
+  rotate: true
+  xy: 1107, 2
+  size: 95, 137
+  orig: 97, 139
+  offset: 1, 1
+  index: -1
+wukong-stand_49
+  rotate: true
+  xy: 836, 99
+  size: 94, 137
+  orig: 97, 139
+  offset: 1, 1
+  index: -1
+wukong-stand_50
+  rotate: true
+  xy: 975, 99
+  size: 94, 137
+  orig: 97, 139
+  offset: 1, 1
+  index: -1
+wukong-stand_51
+  rotate: true
+  xy: 1114, 99
+  size: 94, 137
+  orig: 97, 139
+  offset: 1, 1
+  index: -1
+wukong-stand_52
+  rotate: true
+  xy: 2, 3
+  size: 94, 136
+  orig: 97, 139
+  offset: 1, 1
+  index: -1
+wukong-stand_53
+  rotate: true
+  xy: 140, 3
+  size: 94, 136
+  orig: 97, 139
+  offset: 1, 1
+  index: -1

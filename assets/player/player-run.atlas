@@ -1,0 +1,90 @@
+
+player.png
+size: 830,228
+format: RGBA8888
+filter: Linear,Linear
+repeat: none
+wukong-run_00
+  rotate: true
+  xy: 2, 115
+  size: 111, 141
+  orig: 116, 143
+  offset: 2, 1
+  index: -1
+wukong-run_01
+  rotate: true
+  xy: 145, 115
+  size: 111, 137
+  orig: 116, 143
+  offset: 2, 1
+  index: -1
+wukong-run_02
+  rotate: true
+  xy: 284, 115
+  size: 111, 133
+  orig: 116, 143
+  offset: 2, 1
+  index: -1
+wukong-run_03
+  rotate: true
+  xy: 419, 115
+  size: 111, 132
+  orig: 116, 143
+  offset: 2, 1
+  index: -1
+wukong-run_04
+  rotate: true
+  xy: 553, 115
+  size: 111, 135
+  orig: 116, 143
+  offset: 2, 1
+  index: -1
+wukong-run_05
+  rotate: true
+  xy: 690, 115
+  size: 111, 138
+  orig: 116, 143
+  offset: 2, 1
+  index: -1
+wukong-run_06
+  rotate: true
+  xy: 2, 2
+  size: 111, 141
+  orig: 116, 143
+  offset: 2, 1
+  index: -1
+wukong-run_07
+  rotate: true
+  xy: 145, 2
+  size: 111, 137
+  orig: 116, 143
+  offset: 2, 1
+  index: -1
+wukong-run_08
+  rotate: true
+  xy: 284, 2
+  size: 111, 133
+  orig: 116, 143
+  offset: 2, 1
+  index: -1
+wukong-run_09
+  rotate: true
+  xy: 419, 2
+  size: 111, 132
+  orig: 116, 143
+  offset: 2, 1
+  index: -1
+wukong-run_10
+  rotate: true
+  xy: 553, 2
+  size: 111, 135
+  orig: 116, 143
+  offset: 2, 1
+  index: -1
+wukong-run_11
+  rotate: true
+  xy: 690, 2
+  size: 111, 138
+  orig: 116, 143
+  offset: 2, 1
+  index: -1

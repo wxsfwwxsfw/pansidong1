@@ -10,14 +10,15 @@ import xml.etree.ElementTree as ET
 import pygame
 
 
-SCREEN_WIDTH = 1920
-SCREEN_HEIGHT = 1080
+SCREEN_WIDTH = 1536
+SCREEN_HEIGHT = 1024
 FPS = 60
 MOVE_SPEED = 220  # pixels per second
 ANIM_FPS = 10
+STAND_ANIM_FPS = 8
 MAP_RENDER_SCALE = 1.0
-PLAYER_SCALE = 1.15
-PLAYER_BRIGHTNESS = 0.8
+PLAYER_SCALE = 1.0
+PLAYER_BRIGHTNESS = 0.9
 WEATHER_TINT = (188, 208, 236, 10)  # very light cool air tint
 PLAYER_COLLIDER_WIDTH_RATIO = 0.12
 PLAYER_COLLIDER_HEIGHT_RATIO = 0.10
@@ -26,10 +27,14 @@ SHOW_TILE_COORDS = False
 TILE_COORD_FONT_SIZE = 15
 SHOW_PLAYER_STEP_COORD = True
 GRID_MOVE_STEP_PIXELS = 20
+HIDE_COLLISION_LAYER_VISUAL = True
 
 ASSET_DIR = Path(__file__).parent / "assets"
 MAP_DIR = ASSET_DIR / "map"
-PLAYER_PATH = ASSET_DIR / "player" / "player.png"
+PLAYER_RUN_PATH = ASSET_DIR / "player" / "player-run.png"
+PLAYER_RUN_ATLAS_PATH = ASSET_DIR / "player" / "player-run.atlas"
+PLAYER_STAND_PATH = ASSET_DIR / "player" / "player-stand.png"
+PLAYER_STAND_ATLAS_PATH = ASSET_DIR / "player" / "player-stand.atlas"
 MENU_BG_PATH = ASSET_DIR / "bg" / "登陆背景.png"
 MENU_FONT_CANDIDATES = (
     ASSET_DIR / "fonts" / "霞鹜文楷+Bold.ttf",
@@ -44,6 +49,7 @@ MENU_TEXT_BASELINE_OFFSET = 4
 PAUSE_MENU_ITEMS = ("返回游戏", "保存游戏", "读取游戏", "回主菜单", "设置", "退出")
 RESOLUTION_OPTIONS = (
     (1280, 720),
+    (1536, 1024),
     (1600, 900),
     (1920, 1080),
 )
@@ -51,7 +57,15 @@ PAUSE_HINT_SECONDS = 1.6
 
 GID_MASK = 0x1FFFFFFF
 BLOCKED_PROP_NAMES = {"blocked", "block", "solid", "collide", "collision"}
-COLLISION_LAYER_NAMES = {"collision", "collider", "blocked", "obstacle", "碰撞", "阻挡"}
+COLLISION_LAYER_NAMES = {
+    "collision",
+    "collision_tiles",
+    "collider",
+    "blocked",
+    "obstacle",
+    "碰撞",
+    "阻挡",
+}
 AUTO_BLOCK_TILESET_KEYWORDS = (
     "gutou",       # skull
     "shitou",      # stone
@@ -76,16 +90,11 @@ def load_image(path: Path) -> pygame.Surface:
 
 
 def find_first_map_file() -> Path:
-    explicit_tu1 = MAP_DIR / "tu1" / "tu1.json"
-    if explicit_tu1.exists():
-        return explicit_tu1
+    explicit_map1 = MAP_DIR / "image" / "map1.json"
+    if explicit_map1.exists():
+        return explicit_map1
 
-    preferred = [
-        MAP_DIR / "ine" / "JSON",
-        MAP_DIR / "tu1",
-        MAP_DIR / "one",
-        MAP_DIR,
-    ]
+    preferred = [MAP_DIR / "image", MAP_DIR / "ine" / "JSON", MAP_DIR / "tu1", MAP_DIR]
     for folder in preferred:
         if not folder.exists():
             continue
@@ -163,6 +172,26 @@ class TileLayer:
 
 
 @dataclass
+class ImageLayer:
+    image: pygame.Surface
+    x: float
+    y: float
+    visible: bool
+    opacity: float
+
+
+@dataclass
+class ObjectTile:
+    gid: int
+    x: float
+    y: float
+    width: float
+    height: float
+    visible: bool
+    opacity: float
+
+
+@dataclass
 class DisplaySettings:
     resolution: tuple[int, int]
     fullscreen: bool
@@ -181,10 +210,52 @@ class TiledMap:
         self.pixel_width = self.map_width * self.tile_width
         self.pixel_height = self.map_height * self.tile_height
 
+        self.image_layers: list[ImageLayer] = []
         self.layers: list[TileLayer] = []
+        self.object_tiles: list[ObjectTile] = []
         self.collision_layers: list[TileLayer] = []
         for layer in content.get("layers", []):
-            if layer.get("type") != "tilelayer":
+            layer_type = str(layer.get("type", "")).strip().lower()
+            if layer_type == "imagelayer":
+                image_source = layer.get("image")
+                if not image_source:
+                    continue
+                try:
+                    image_path = resolve_image_path(self.map_path.parent, str(image_source))
+                    image = load_image(image_path)
+                except FileNotFoundError as exc:
+                    print(exc)
+                    continue
+                self.image_layers.append(
+                    ImageLayer(
+                        image=image,
+                        x=float(layer.get("x", 0)),
+                        y=float(layer.get("y", 0)),
+                        visible=bool(layer.get("visible", True)),
+                        opacity=max(0.0, min(1.0, float(layer.get("opacity", 1.0)))),
+                    )
+                )
+                continue
+            if layer_type == "objectgroup":
+                layer_visible = bool(layer.get("visible", True))
+                layer_opacity = max(0.0, min(1.0, float(layer.get("opacity", 1.0))))
+                for obj in layer.get("objects", []):
+                    gid_raw = int(obj.get("gid", 0))
+                    if gid_raw == 0:
+                        continue
+                    self.object_tiles.append(
+                        ObjectTile(
+                            gid=gid_raw & GID_MASK,
+                            x=float(obj.get("x", 0.0)),
+                            y=float(obj.get("y", 0.0)),
+                            width=float(obj.get("width", 0.0)),
+                            height=float(obj.get("height", 0.0)),
+                            visible=layer_visible and bool(obj.get("visible", True)),
+                            opacity=layer_opacity,
+                        )
+                    )
+                continue
+            if layer_type != "tilelayer":
                 continue
             tile_layer = TileLayer(
                 data=list(layer.get("data", [])),
@@ -196,6 +267,8 @@ class TiledMap:
             layer_name = str(layer.get("name", "")).strip().lower()
             if layer_name in COLLISION_LAYER_NAMES:
                 self.collision_layers.append(tile_layer)
+                if HIDE_COLLISION_LAYER_VISUAL:
+                    tile_layer.visible = False
 
         self.tiles: dict[int, pygame.Surface] = {}
         self.scaled_tiles_cache: dict[float, dict[int, pygame.Surface]] = {}
@@ -212,22 +285,36 @@ class TiledMap:
             first_gid = int(ts["firstgid"])
             source = ts.get("source")
             if source:
-                tsx_path = resolve_source_path(self.map_path, source)
-                tree = ET.parse(tsx_path)
-                root = tree.getroot()
+                root: ET.Element | None = None
+                try:
+                    tsx_path = resolve_source_path(self.map_path, source)
+                    tree = ET.parse(tsx_path)
+                    root = tree.getroot()
 
-                tile_w = int(root.attrib.get("tilewidth", self.tile_width))
-                tile_h = int(root.attrib.get("tileheight", self.tile_height))
-                tile_count = int(root.attrib.get("tilecount", "1"))
-                columns = int(root.attrib.get("columns", "1"))
-                ts_name = root.attrib.get("name", "")
+                    tile_w = int(root.attrib.get("tilewidth", self.tile_width))
+                    tile_h = int(root.attrib.get("tileheight", self.tile_height))
+                    tile_count = int(root.attrib.get("tilecount", "1"))
+                    columns = int(root.attrib.get("columns", "1"))
+                    ts_name = root.attrib.get("name", "")
 
-                image_node = root.find("image")
-                if image_node is None:
-                    continue
-                image_source = image_node.attrib["source"]
-                image_path = resolve_image_path(tsx_path.parent, image_source)
-                sheet = load_image(image_path)
+                    image_node = root.find("image")
+                    if image_node is None:
+                        continue
+                    image_source = image_node.attrib["source"]
+                    image_path = resolve_image_path(tsx_path.parent, image_source)
+                    sheet = load_image(image_path)
+                except FileNotFoundError:
+                    # Some maps are exported with machine-local TSX paths.
+                    # Fallback: use a same-stem PNG from the map folder.
+                    source_name = Path(str(source).replace("\\", "/")).stem
+                    image_path = resolve_image_path(self.map_path.parent, f"{source_name}.png")
+                    sheet = load_image(image_path)
+                    tile_w = self.tile_width
+                    tile_h = self.tile_height
+                    columns = max(1, sheet.get_width() // max(1, tile_w))
+                    rows = max(1, sheet.get_height() // max(1, tile_h))
+                    tile_count = max(1, columns * rows)
+                    ts_name = source_name
 
                 for local_id in range(tile_count):
                     col = local_id % columns
@@ -239,7 +326,8 @@ class TiledMap:
                     ):
                         continue
                     self.tiles[first_gid + local_id] = sheet.subsurface(rect).copy()
-                self._collect_blocked_from_tsx(root, first_gid)
+                if root is not None:
+                    self._collect_blocked_from_tsx(root, first_gid)
                 self._collect_blocked_by_tileset_name(first_gid, tile_count, ts_name)
                 self._collect_right_trim_collision_by_tileset_name(first_gid, tile_count, ts_name)
                 self._collect_torch_by_tileset_name(first_gid, tile_count, ts_name)
@@ -257,8 +345,12 @@ class TiledMap:
             if columns <= 0:
                 columns = 1
 
-            image_path = resolve_image_path(self.map_path.parent, image_source)
-            sheet = load_image(image_path)
+            try:
+                image_path = resolve_image_path(self.map_path.parent, image_source)
+                sheet = load_image(image_path)
+            except FileNotFoundError as exc:
+                print(exc)
+                continue
 
             for local_id in range(tile_count):
                 col = local_id % columns
@@ -510,6 +602,21 @@ class TiledMap:
             int((camera_y + world_view_h) // self.tile_height) + 1,
         )
 
+        for image_layer in self.image_layers:
+            if not image_layer.visible:
+                continue
+            image = image_layer.image
+            if scale != 1.0:
+                target_w = max(1, round(image.get_width() * scale))
+                target_h = max(1, round(image.get_height() * scale))
+                image = pygame.transform.smoothscale(image, (target_w, target_h))
+            if image_layer.opacity < 1.0:
+                image = image.copy()
+                image.set_alpha(round(255 * image_layer.opacity))
+            draw_x = round((image_layer.x - camera_x) * scale + offset_x)
+            draw_y = round((image_layer.y - camera_y) * scale + offset_y)
+            surface.blit(image, (draw_x, draw_y))
+
         for layer in self.layers:
             if not layer.visible:
                 continue
@@ -533,6 +640,25 @@ class TiledMap:
                         + offset_y
                     )
                     surface.blit(tile, (x, y))
+
+        for obj in self.object_tiles:
+            if not obj.visible:
+                continue
+            tile = tiles_for_draw.get(obj.gid)
+            if tile is None:
+                continue
+            draw_tile = tile
+            if obj.width > 0 and obj.height > 0:
+                target_w = max(1, round(obj.width * scale))
+                target_h = max(1, round(obj.height * scale))
+                if draw_tile.get_width() != target_w or draw_tile.get_height() != target_h:
+                    draw_tile = pygame.transform.smoothscale(draw_tile, (target_w, target_h))
+            if obj.opacity < 1.0:
+                draw_tile = draw_tile.copy()
+                draw_tile.set_alpha(round(255 * obj.opacity))
+            x = round((obj.x - camera_x) * scale + offset_x)
+            y = round((obj.y - camera_y) * scale - draw_tile.get_height() + offset_y)
+            surface.blit(draw_tile, (x, y))
 
     def draw_torch_glow(
         self,
@@ -595,7 +721,21 @@ def get_map_offset(
     return offset_x, offset_y
 
 
-def build_animation(sheet: pygame.Surface) -> dict[str, list[pygame.Surface]]:
+def build_animation(
+    sheet: pygame.Surface,
+    atlas_path: Path | None = None,
+) -> dict[str, list[pygame.Surface]]:
+    if atlas_path is not None and atlas_path.exists():
+        atlas_frames = load_frames_from_atlas(sheet, atlas_path)
+        if atlas_frames:
+            atlas_frames = normalize_frames_bottom_center(atlas_frames)
+            return {
+                "down": atlas_frames,
+                "left": atlas_frames,
+                "right": [pygame.transform.flip(frame, True, False) for frame in atlas_frames],
+                "up": atlas_frames,
+            }
+
     cols = 8
     rows = 8
     frame_w = sheet.get_width() // cols
@@ -618,6 +758,93 @@ def build_animation(sheet: pygame.Surface) -> dict[str, list[pygame.Surface]]:
         "up": grid[3],
     }
     return mapping
+
+
+def parse_atlas_xy(value: str) -> tuple[int, int]:
+    x_text, y_text = [part.strip() for part in value.split(",", 1)]
+    return int(x_text), int(y_text)
+
+
+def normalize_frames_bottom_center(frames: list[pygame.Surface]) -> list[pygame.Surface]:
+    if not frames:
+        return []
+    max_w = max(frame.get_width() for frame in frames)
+    max_h = max(frame.get_height() for frame in frames)
+    normalized: list[pygame.Surface] = []
+    for frame in frames:
+        canvas = pygame.Surface((max_w, max_h), pygame.SRCALPHA)
+        x = (max_w - frame.get_width()) // 2
+        y = max_h - frame.get_height()
+        canvas.blit(frame, (x, y))
+        normalized.append(canvas)
+    return normalized
+
+
+def load_frames_from_atlas(sheet: pygame.Surface, atlas_path: Path) -> list[pygame.Surface]:
+    lines = atlas_path.read_text(encoding="utf-8").splitlines()
+    if not lines:
+        return []
+
+    idx = 0
+    total = len(lines)
+    while idx < total and not lines[idx].strip():
+        idx += 1
+    if idx >= total:
+        return []
+
+    # Skip atlas page name.
+    idx += 1
+    # Skip page metadata lines (e.g. size/filter/repeat).
+    while idx < total:
+        current = lines[idx].strip()
+        if not current:
+            idx += 1
+            break
+        if ":" not in current:
+            break
+        idx += 1
+
+    frames: list[pygame.Surface] = []
+    while idx < total:
+        line = lines[idx].strip()
+        if not line:
+            idx += 1
+            continue
+        if ":" in line:
+            idx += 1
+            continue
+
+        idx += 1
+        attrs: dict[str, str] = {}
+        while idx < total:
+            attr_line = lines[idx].strip()
+            if not attr_line:
+                idx += 1
+                break
+            if ":" not in attr_line:
+                break
+            key, value = attr_line.split(":", 1)
+            attrs[key.strip().lower()] = value.strip()
+            idx += 1
+
+        if "xy" not in attrs or "size" not in attrs:
+            continue
+
+        x, y = parse_atlas_xy(attrs["xy"])
+        w, h = parse_atlas_xy(attrs["size"])
+        rotate = attrs.get("rotate", "false").lower() == "true"
+        src_w, src_h = (h, w) if rotate else (w, h)
+        if src_w <= 0 or src_h <= 0:
+            continue
+        if x < 0 or y < 0 or x + src_w > sheet.get_width() or y + src_h > sheet.get_height():
+            continue
+
+        frame = sheet.subsurface(pygame.Rect(x, y, src_w, src_h)).copy()
+        if rotate:
+            frame = pygame.transform.rotate(frame, -90)
+        frames.append(frame)
+
+    return frames
 
 
 def apply_player_tone(
@@ -817,7 +1044,7 @@ def draw_pause_panel(
     screen.blit(title_surface, title_rect)
 
     start_y = title_rect.bottom + 56
-    spacing = 96
+    spacing = 84
     item_rects: list[pygame.Rect] = []
     for idx, text in enumerate(items):
         label = item_font.render(text, True, (232, 238, 242) if idx == hovered_idx else (208, 214, 220))
@@ -977,7 +1204,6 @@ def run_login_menu(
     base_font = load_menu_font(46)
     hover_font = load_menu_font(52)
     hint_font = load_menu_font(30)
-    spacing = 146
 
     while True:
         clock.tick(FPS)
@@ -1054,154 +1280,128 @@ def run_login_menu(
         pygame.display.flip()
 
 
+def run_name_input_menu(screen: pygame.Surface, clock: pygame.time.Clock) -> str | None:
+    title_font = load_menu_font(58)
+    body_font = load_menu_font(40)
+    hint_font = load_menu_font(30)
+
+    name = ""
+    error_hint = ""
+    pygame.key.start_text_input()
+    try:
+        while True:
+            clock.tick(FPS)
+            draw_menu_background(screen)
+            view_w, view_h = screen.get_size()
+
+            panel = pygame.Rect(0, 0, min(980, int(view_w * 0.78)), 300)
+            panel.center = (view_w // 2, view_h // 2)
+            overlay = pygame.Surface((panel.width, panel.height), pygame.SRCALPHA)
+            overlay.fill((6, 7, 10, 210))
+            screen.blit(overlay, panel)
+            pygame.draw.rect(screen, (196, 184, 152), panel, width=2, border_radius=10)
+
+            title = title_font.render("请输入你的名字", True, (238, 224, 188))
+            screen.blit(title, title.get_rect(center=(panel.centerx, panel.top + 58)))
+
+            input_box = pygame.Rect(panel.left + 96, panel.top + 108, panel.width - 192, 68)
+            pygame.draw.rect(screen, (24, 27, 38), input_box, border_radius=8)
+            pygame.draw.rect(screen, (210, 198, 164), input_box, width=2, border_radius=8)
+
+            text_surf = body_font.render(name, True, (244, 240, 226))
+            text_rect = text_surf.get_rect(midleft=(input_box.left + 20, input_box.centery))
+            if name:
+                screen.blit(text_surf, text_rect)
+
+            show_cursor = (pygame.time.get_ticks() // 500) % 2 == 0
+            if show_cursor:
+                cursor_x = text_rect.right + 3 if name else input_box.left + 20
+                cursor_top = input_box.top + 14
+                cursor_bottom = input_box.bottom - 14
+                pygame.draw.line(
+                    screen,
+                    (244, 240, 226),
+                    (cursor_x, cursor_top),
+                    (cursor_x, cursor_bottom),
+                    2,
+                )
+
+            hint = hint_font.render("Enter确认开始 / Backspace删除 / Esc返回", True, (200, 204, 214))
+            screen.blit(hint, hint.get_rect(center=(panel.centerx, panel.bottom - 44)))
+            if error_hint:
+                err = hint_font.render(error_hint, True, (232, 104, 104))
+                screen.blit(err, err.get_rect(center=(panel.centerx, panel.bottom - 84)))
+
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    return None
+                if event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_ESCAPE:
+                        return None
+                    if event.key == pygame.K_BACKSPACE:
+                        name = name[:-1]
+                        error_hint = ""
+                    elif event.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
+                        clean = name.strip()
+                        if clean:
+                            return clean
+                        error_hint = "名字不能为空"
+                elif event.type == pygame.TEXTINPUT:
+                    if len(name) < 12:
+                        name += event.text
+                        error_hint = ""
+
+            pygame.display.flip()
+    finally:
+        pygame.key.stop_text_input()
+
+
 def run_game_session(
     screen: pygame.Surface,
     clock: pygame.time.Clock,
     display_settings: DisplaySettings,
+    player_name: str,
 ) -> tuple[str, pygame.Surface, DisplaySettings]:
-    try:
-        map_file = find_first_map_file()
-        tiled_map = TiledMap(map_file)
-        player_sheet = load_image(PLAYER_PATH)
-    except (FileNotFoundError, ET.ParseError, json.JSONDecodeError) as e:
-        print(e)
-        print("Check Tiled map/json/tsx/image paths under assets/map")
-        return "quit", screen, display_settings
+    from src.scenes.world_scene import run_world_scene
 
-    anim = build_animation(player_sheet)
-    anim = scale_animation(anim, PLAYER_SCALE)
-    anim = apply_player_tone(anim, PLAYER_BRIGHTNESS)
-    coord_font = pygame.font.Font(None, TILE_COORD_FONT_SIZE)
-    direction = "down"
-    frame_idx = 0
-    anim_timer = 0.0
-    collision_half_w = max(6, round(anim["down"][0].get_width() * PLAYER_COLLIDER_WIDTH_RATIO))
-    collision_half_h = max(6, round(anim["down"][0].get_height() * PLAYER_COLLIDER_HEIGHT_RATIO))
-    collision_foot_offset = round(anim["down"][0].get_height() * PLAYER_COLLIDER_FOOT_OFFSET_RATIO)
-    shadow_w = max(18, round(anim["down"][0].get_width() * 0.46))
-    shadow_h = max(10, round(anim["down"][0].get_height() * 0.2))
-    player_shadow = pygame.Surface((shadow_w, shadow_h), pygame.SRCALPHA)
-    pygame.draw.ellipse(player_shadow, (0, 0, 0, 90), player_shadow.get_rect())
-
-    x, y = find_spawn_position_top(
-        tiled_map,
-        collision_half_w,
-        collision_half_h,
-        collision_foot_offset,
+    return run_world_scene(
+        screen,
+        clock,
+        display_settings,
+        player_name,
+        core={
+            "find_first_map_file": find_first_map_file,
+            "MAP_DIR": MAP_DIR,
+            "TiledMap": TiledMap,
+            "load_image": load_image,
+            "PLAYER_RUN_PATH": PLAYER_RUN_PATH,
+            "PLAYER_RUN_ATLAS_PATH": PLAYER_RUN_ATLAS_PATH,
+            "PLAYER_STAND_PATH": PLAYER_STAND_PATH,
+            "PLAYER_STAND_ATLAS_PATH": PLAYER_STAND_ATLAS_PATH,
+            "build_animation": build_animation,
+            "scale_animation": scale_animation,
+            "apply_player_tone": apply_player_tone,
+            "PLAYER_SCALE": PLAYER_SCALE,
+            "PLAYER_BRIGHTNESS": PLAYER_BRIGHTNESS,
+            "TILE_COORD_FONT_SIZE": TILE_COORD_FONT_SIZE,
+            "PLAYER_COLLIDER_WIDTH_RATIO": PLAYER_COLLIDER_WIDTH_RATIO,
+            "PLAYER_COLLIDER_HEIGHT_RATIO": PLAYER_COLLIDER_HEIGHT_RATIO,
+            "PLAYER_COLLIDER_FOOT_OFFSET_RATIO": PLAYER_COLLIDER_FOOT_OFFSET_RATIO,
+            "find_spawn_position_top": find_spawn_position_top,
+            "GRID_MOVE_STEP_PIXELS": GRID_MOVE_STEP_PIXELS,
+            "FPS": FPS,
+            "MAP_RENDER_SCALE": MAP_RENDER_SCALE,
+            "get_map_offset": get_map_offset,
+            "MOVE_SPEED": MOVE_SPEED,
+            "ANIM_FPS": ANIM_FPS,
+            "STAND_ANIM_FPS": STAND_ANIM_FPS,
+            "SHOW_TILE_COORDS": SHOW_TILE_COORDS,
+            "SHOW_PLAYER_STEP_COORD": SHOW_PLAYER_STEP_COORD,
+            "draw_player_step_coordinate": draw_player_step_coordinate,
+            "draw_weather_effects": draw_weather_effects,
+        },
+        callbacks={"run_pause_menu": run_pause_menu},
     )
-    x = round(x / GRID_MOVE_STEP_PIXELS) * GRID_MOVE_STEP_PIXELS
-    y = round(y / GRID_MOVE_STEP_PIXELS) * GRID_MOVE_STEP_PIXELS
-
-    running = True
-    while running:
-        dt = clock.tick(FPS) / 1000.0
-        view_width, view_height = screen.get_size()
-        open_pause_menu = False
-
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                return "quit", screen, display_settings
-            if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
-                open_pause_menu = True
-
-        if open_pause_menu:
-            action, screen, display_settings = run_pause_menu(screen, clock, display_settings)
-            if action == "quit":
-                return "quit", screen, display_settings
-            if action == "main_menu":
-                return "main_menu", screen, display_settings
-            continue
-
-        keys = pygame.key.get_pressed()
-        move_dx = (keys[pygame.K_d] or keys[pygame.K_RIGHT]) - (
-            keys[pygame.K_a] or keys[pygame.K_LEFT]
-        )
-        move_dy = (keys[pygame.K_s] or keys[pygame.K_DOWN]) - (
-            keys[pygame.K_w] or keys[pygame.K_UP]
-        )
-        moving = move_dx != 0 or move_dy != 0
-        if moving:
-            vec = pygame.Vector2(move_dx, move_dy)
-            vec = vec.normalize() * MOVE_SPEED * dt
-            target_x = x + vec.x
-            collision_y = y + collision_foot_offset
-            if tiled_map.can_move_to(target_x, collision_y, collision_half_w, collision_half_h):
-                x = target_x
-            target_y = y + vec.y
-            if tiled_map.can_move_to(x, target_y + collision_foot_offset, collision_half_w, collision_half_h):
-                y = target_y
-
-            if abs(move_dy) > abs(move_dx):
-                direction = "down" if move_dy > 0 else "up"
-            else:
-                direction = "right" if move_dx > 0 else "left"
-
-            anim_timer += dt
-            if anim_timer >= 1.0 / ANIM_FPS:
-                anim_timer = 0.0
-                frame_idx = (frame_idx + 1) % len(anim[direction])
-        else:
-            frame_idx = 0
-            anim_timer = 0.0
-
-        current = anim[direction][frame_idx]
-        half_w = current.get_width() // 2
-        half_h = current.get_height() // 2
-
-        # Keep player inside map bounds.
-        x = max(half_w, min(tiled_map.pixel_width - half_w, x))
-        y = max(half_h, min(tiled_map.pixel_height - half_h, y))
-
-        world_view_w = view_width / MAP_RENDER_SCALE
-        world_view_h = view_height / MAP_RENDER_SCALE
-        camera_x = max(0, min(max(0, tiled_map.pixel_width - world_view_w), x - world_view_w / 2))
-        camera_y = max(0, min(max(0, tiled_map.pixel_height - world_view_h), y - world_view_h / 2))
-        offset_x, offset_y = get_map_offset(
-            tiled_map.pixel_width,
-            tiled_map.pixel_height,
-            view_width,
-            view_height,
-            MAP_RENDER_SCALE,
-        )
-
-        screen.fill((0, 0, 0))
-        tiled_map.draw(screen, camera_x, camera_y, MAP_RENDER_SCALE, offset_x, offset_y)
-        if SHOW_TILE_COORDS:
-            tiled_map.draw_tile_coordinates(
-                screen,
-                camera_x,
-                camera_y,
-                coord_font,
-                MAP_RENDER_SCALE,
-                offset_x,
-                offset_y,
-            )
-        if SHOW_PLAYER_STEP_COORD:
-            draw_player_step_coordinate(
-                screen,
-                coord_font,
-                x,
-                y + collision_foot_offset,
-            )
-
-        player_center_x = round((x - camera_x) * MAP_RENDER_SCALE + offset_x)
-        player_center_y = round((y - camera_y) * MAP_RENDER_SCALE + offset_y)
-        shadow_rect = player_shadow.get_rect(
-            center=(player_center_x, player_center_y + max(8, current.get_height() // 3))
-        )
-        screen.blit(player_shadow, shadow_rect)
-        player_rect = current.get_rect(
-            center=(player_center_x, player_center_y)
-        )
-        screen.blit(current, player_rect)
-        draw_weather_effects(
-            screen,
-            pygame.time.get_ticks() / 1000.0,
-        )
-
-        pygame.display.flip()
-
-    return "main_menu", screen, display_settings
 
 
 def main() -> None:
@@ -1221,10 +1421,15 @@ def main() -> None:
         if menu_action != "start":
             break
 
+        player_name = run_name_input_menu(screen, clock)
+        if not player_name:
+            continue
+
         game_action, screen, display_settings = run_game_session(
             screen,
             clock,
             display_settings,
+            player_name,
         )
         if game_action == "quit":
             app_running = False
